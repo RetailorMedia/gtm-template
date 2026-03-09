@@ -1,0 +1,5 @@
+homepage: "https://www.retailor.media/"
+documentation: "https://docs.google.com/document/d/1_itx_BmVDS9K4_jappwdLGpHzS_8YNMh0N37Y5UX9W8/edit?usp=sharing"
+versions:
+  - sha: a0bc0dc5253f0b545f3673f752124271b9260a50
+    changeNotes: Initial Release 1
