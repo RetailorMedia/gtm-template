@@ -1,5 +1,7 @@
 homepage: "https://www.retailor.media/"
-documentation: "https://docs.google.com/document/d/1_itx_BmVDS9K4_jappwdLGpHzS_8YNMh0N37Y5UX9W8/edit?usp=sharing"
+documentation: "https://github.com/RetailorMedia/gtm-template/blob/main/docs/RetailorMedia-TagManager-Template.md"
 versions:
+  - sha: 5fbd276c3a4abf5297250c71b43aee64bb2a42cb
+    changeNotes: added documentation
   - sha: a0bc0dc5253f0b545f3673f752124271b9260a50
     changeNotes: Initial Release 1
