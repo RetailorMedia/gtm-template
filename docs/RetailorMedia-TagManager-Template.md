@@ -106,6 +106,7 @@ Customer data typically refers to attributes associated with the user. They can 
 | **CRM User ID** | User ID identifiable in a CRM system. |
 | **External User ID** | Any identifier of the user. |
 | **Phone Without Country Prefix** | User's phone number without the country prefix, e.g., `3333333333` |
+| **Phone With Country Prefix** | User's phone number with the country prefix, e.g., `+393333333333` |
 
 ![Customer Data Properties configuration](images/008_customer_data.png)
 
