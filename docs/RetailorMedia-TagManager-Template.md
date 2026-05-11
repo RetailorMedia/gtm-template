@@ -6,6 +6,12 @@ The **RetailorID Custom Template** is the official GTM template for installing t
 
 ## PERMISSION
 
+The template requires the following 3 permissions to operate correctly:
+
+- **Accesses global variables** — reads and writes to the `dataLayer` and the `__retailor` global object
+- **Injects scripts** — loads the Retailor Media tracking script from `*.retailor.media`
+- **Logs to console** — outputs debug information in GTM preview mode
+
 ![Tag permissions](images/002_permissions.png)
 
 ---
