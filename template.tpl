@@ -11,7 +11,7 @@ ___INFO___
 {
   "displayName": "RetailorID - Retailor Media",
   "categories": [
-    "ADVERTSING",
+    "ADVERTISING",
     "ANALYTICS"
   ],
   "description": "The official RetailorID template. Quickly and easily install the tracking script, events, and custom variables",
@@ -353,16 +353,14 @@ ___SANDBOXED_JS_FOR_WEB_TEMPLATE___
 var log = require('logToConsole');
 log('data =', data);
 
-const JSON = require('JSON');
 const setInWindow = require('setInWindow');
 const callInWindow = require('callInWindow');
 const copyFromWindow = require('copyFromWindow');
 const callLater = require('callLater');
 const queryPermission = require('queryPermission');
 const injectScript = require('injectScript');
-const generateRandom = require('generateRandom');
-const makeString = require('makeString');
 const encodeUriComponent = require('encodeUriComponent');
+
 let dataLayerCallback = ()=>{};
 if (queryPermission('access_globals', 'readwrite', 'dataLayer')) {
   dataLayerCallback = (eventName, retailorid) => {
@@ -375,113 +373,103 @@ if (queryPermission('access_globals', 'readwrite', 'dataLayer')) {
 
 const IDName = 'retailorid';
 const GlobalObjectName = '__retailor';
-const GlobalFunc = GlobalObjectName + 'Func';
+const ListenersFlag = '__retailorGtmListeners';
 let GlobalLoading = false;
-const override = true;
 const providerId = data.ProviderID;
 const EventName = data.EventName=='standard' ? data.StandardEventName : data.CustomEventName.trim();
 const customerData = data.CustomerData || [];
 const customVariables = data.CustomVariables || [];
 const DataLayerEventName = data.DataLayerEventName;
 const WindowCustomEventName = data.WindowCustomEventName;
-const url = 'https://js.retailor.media/route.js?providerId='+encodeUriComponent(providerId)+'&global='+encodeUriComponent(GlobalObjectName)+'&autostart=true&id_name='+encodeUriComponent(IDName); // autostart=true because the context in which the script is loaded has conflicts with js sandbox and it's impossible to handle manual __retailor.sendData immediatly after script injection.
+// autostart=false: this template no longer relies on the single automatic hit.
+// Instead every tag firing pushes its own self-contained hit (event name +
+// custom variables + customer data) into __retailor.sendQueue, and the library
+// sends each one independently. This way nothing is lost when several Retailor
+// tags fire on the same page load, and no global state is shared between events.
+const url = 'https://js.retailor.media/route.js?providerId='+encodeUriComponent(providerId)+'&global='+encodeUriComponent(GlobalObjectName)+'&autostart=false&id_name='+encodeUriComponent(IDName);
 
 log('GlobalObjectName = ', GlobalObjectName);
 
 var ObjectExists = ()=>typeof copyFromWindow(GlobalObjectName+'.sendData')=='function';
-var IsMainSnippet = !ObjectExists();
-var SuccessFunc = ()=>{
-  GlobalLoading = false;
-  let GlobalObjectReady = copyFromWindow(GlobalObjectName + '.ready');
-  GlobalObjectReady(onReady);
 
-  if (!IsMainSnippet) {
-    callInWindow(GlobalFunc, GlobalObjectName, 'sendData');
+// Build the self-contained snapshot for THIS hit.
+// customerData -> conf (st = event name + user identifiers e/pc/pn/ex/crm...)
+let conf = customerData.reduce((p, item)=>{
+  if (typeof item.value!=='undefined' && item.value!==null) {
+    p[item.name] = item.value;
   }
-    
-  data.gtmOnSuccess();
+  return p;
+}, {
+  st: EventName
+});
+let snapshot = {
+  conf: conf,
+  customVariables: customVariables
 };
 
-// reflect changes to window object
-setInWindow(GlobalFunc, function(g, method, arg1, arg2, arg3){
-  callLater(()=>{
-    callInWindow(g+'.'+method, arg1, arg2, arg3);
-  });
-}, !override);
-
-// Add a callback into in-page __retailor.ready
-// __retailor.sendData can't be executed inside this function because of js sandbox and wrong contexts
-function onReady(){  
-  // Set main configs
-  let config = customerData.reduce((p,item)=>{
-    if (typeof item.value!=='undefined' && item.value!==null) {
-      p[item.name] = item.value;
-    }
-    return p;
-  }, {
-    st: EventName
-  });
-  
+// Register the "data-sent" listeners (Push dataLayer event / window CustomEvent)
+// only once per page. The listeners persist and fire once per hit, forwarding the
+// resolved retailorid. Guarded by a top-level window flag because the template
+// runs in a fresh sandbox on every tag firing.
+function registerListeners(){
+  if (copyFromWindow(ListenersFlag)) {
+    return;
+  }
   let GlobalObjectOn = copyFromWindow(GlobalObjectName + '.on');
-  let GlobalObjectCustomEvent = copyFromWindow(GlobalObjectName + '.CustomEvent');
-  let CVs;
+  if (typeof GlobalObjectOn!=='function') {
+    return; // library not ready yet; a later firing will register them
+  }
+  setInWindow(ListenersFlag, true, true);
 
-  callInWindow(GlobalFunc, GlobalObjectName, 'setConfig', config);
-  
-  // Add custom variables
-  (customVariables||[]).forEach(cv=>{
-    log('Setting CustomVariable', cv);
-    callInWindow(GlobalFunc, GlobalObjectName, 'addCustomVariable', cv);
-  });
-  
-  // Push dataLayer event
   if (DataLayerEventName) {
-    log('Setting PushDataLayerEvent', DataLayerEventName);
-    let listener = (res)=>{
+    GlobalObjectOn('data-sent', (res)=>{
       log('DataLayer Event triggering', DataLayerEventName, res.retailorid);
       dataLayerCallback(DataLayerEventName, res.retailorid);
-    };
-
-    GlobalObjectOn('data-sent', listener, true);
+    });
     log('data-sent listener for dataLayer event has been set');
-  } else {
-    log('DataLayerEventName is missing');
   }
-  
-  // Window CustomEvent trigger
   if (WindowCustomEventName) {
-    log('WindowCustomEventName', WindowCustomEventName);
-    let listenerCE = (res)=>{
+    let GlobalObjectCustomEvent = copyFromWindow(GlobalObjectName + '.CustomEvent');
+    GlobalObjectOn('data-sent', (res)=>{
       log('WindowCustomEvent triggering', WindowCustomEventName, res.retailorid);
       GlobalObjectCustomEvent(WindowCustomEventName, { retailorid: res.retailorid });
-    };
-
-    GlobalObjectOn('data-sent', listenerCE, true);
+    });
     log('data-sent listener for CustomEvent has been set');
   }
+}
+
+// Push this hit into the library queue. Before the library finishes loading the
+// queue is a plain array (the hit is buffered and flushed by init()); afterwards
+// push() is overridden to send immediately. Either way the hit is never lost.
+function PushSnapshot(){
+  GlobalLoading = false;
+  registerListeners();
+  log('Queueing Retailor hit for event', EventName);
+  callInWindow(GlobalObjectName + '.sendQueue.push', snapshot);
+  data.gtmOnSuccess();
 }
 
 function BeforeScript() {
   if (ObjectExists()){
     return AfterScript();
   }
-  
+
   if (GlobalLoading) {
     return callLater(BeforeScript);
   }
-  
+
   if (queryPermission('inject_script', url)) {
     log('injecting script');
     GlobalLoading = true;
     return injectScript(url, AfterScript, Failure, 'RetailorMediaID');
   }
-  
+
   GlobalLoading = false;
   return Failure('failed to load RetailorID tag');
 }
 function AfterScript() {
   GlobalLoading = false;
-  return callLater(SuccessFunc);
+  return callLater(PushSnapshot);
 }
 function Failure(err){
   if (err) {
@@ -1019,6 +1007,84 @@ ___WEB_PERMISSIONS___
                   {
                     "type": 8,
                     "boolean": true
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  },
+                  {
+                    "type": 1,
+                    "string": "execute"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "__retailor.sendQueue.push"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  }
+                ]
+              },
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  },
+                  {
+                    "type": 1,
+                    "string": "execute"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "__retailorGtmListeners"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
                   }
                 ]
               }
