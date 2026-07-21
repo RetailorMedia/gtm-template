@@ -1,6 +1,13 @@
 homepage: "https://www.retailor.media/"
 documentation: "https://github.com/RetailorMedia/gtm-template/blob/main/docs/RetailorMedia-TagManager-Template.md"
 versions:
+  - sha: 03a851b28ccf5130e7496c11ebdf4cc969ace57e
+    changeNotes: >-
+      Reliable per-event delivery: each tag firing now sends its own
+      self-contained hit (own event name + custom variables) instead of relying
+      on a single automatic hit and shared state. Fixes missing custom variables
+      and events dropped when multiple Retailor tags fire on the same page load.
+      Requires re-accepting the tag permissions.
   - sha: 5fbd276c3a4abf5297250c71b43aee64bb2a42cb
     changeNotes: added documentation
   - sha: a0bc0dc5253f0b545f3673f752124271b9260a50
